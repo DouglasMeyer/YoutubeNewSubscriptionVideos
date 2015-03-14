@@ -1,0 +1,33 @@
+{
+  "name": "YoutubeNewSubscriptions",
+  "version": "0.0.0",
+  "description": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Douglas Meyer <Douglas.Meyer@mail.com>",
+  "dependencies": {
+    "connect": "",
+    "del": "",
+    "gulp": "",
+    "gulp-less": "",
+    "gulp-minify-css": "",
+    "gulp-sourcemaps": "",
+    "gulp-uglify": "",
+    "gulp-util": "",
+    "systemjs": ""
+  },
+  "devDependencies": {
+    "gulp-inject-reload": "",
+    "gulp-livereload": "",
+    "gulp-watch": "",
+    "jasmine-core": "",
+    "karma": "",
+    "karma-chrome-launcher": "",
+    "karma-firefox-launcher": "",
+    "karma-jasmine": "",
+    "karma-phantomjs-launcher": "",
+    "karma-safari-launcher": "",
+    "serve-static": ""
+  }
+}
