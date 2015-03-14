@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Youtube New Subscriptions</title>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.14/angular.min.js">
+      console.log('in angular script');
+    </script>
+    <script src="/gapi.js"></script>
+    <script src="/index.js"></script>
+    <link rel="stylesheet" href="/index.css" />
+  </head>
+  <body ng-app="YTNew">
+    <ul ng-controller="SubscriptionsCtrl">
+      <li
+        ng-repeat="subscription in subscriptions"
+        title="{{ subscription.snippet.description }}"
+        class="subscription"
+      >
+        <img ng-src="{{ subscription.snippet.thumbnails.default.url }}" />
+        <div class="title">{{ subscription.snippet.title }}</div>
+        <!--pre>{{ subscription | json }}</pre-->
+      </li>
+    </ul>
+  </body>
+</html>
