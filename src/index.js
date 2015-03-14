@@ -16,40 +16,57 @@ angular.module('YTNew', [])
     return $q.when( Pgapi.request.apply(Pgapi, arguments) );
   };
 })
-.factory('subscriptions', function(gapi){
-  var subscriptions = {};
-  try {
-    subscriptions = angular.fromJson(localStorage.getItem('YTNew.subscriptions'));
-  } catch(e){
-    console.error('subscriptions', e);
+.service('serviceCache', function(){
+
+  this.get = function(service, expiresMinutes){
+    var cache;
+    try {
+      var fetchDate = localStorage.getItem('YTNew.'+service+'.fetchDate');
+      if (fetchDate && new Date(fetchDate) > new Date() - 1000*60*expiresMinutes) {
+        cache = angular.fromJson(localStorage.getItem('YTNew.'+service));
+      } else {
+        localStorage.removeItem('YTNew.'+service+'.fetchDate');
+        localStorage.removeItem('YTNew.'+service);
+      }
+    } catch(e){
+      console.error('serviceCache', service, e);
+    }
+    return cache;
+  };
+
+  this.set = function(service, value){
+    try {
+      localStorage.setItem('YTNew.'+service+'.fetchDate', new Date());
+      localStorage.setItem('YTNew.'+service, angular.toJson(value));
+    } catch(e){
+      console.error('subscriptions', e);
+    }
+  };
+})
+.factory('subscriptions', function(gapi, serviceCache){
+  var subscriptions = serviceCache.get('subscriptions', 60*24*5);
+
+  if (!subscriptions) {
+    subscriptions = [];
+    fetchSubscriptions();
   }
-  if (!subscriptions || !subscriptions.all) subscriptions = { all: [] };
+
+  return subscriptions;
 
   function fetchSubscriptions(pageToken){
     gapi.request('youtube', 'subscriptions', 'list', {
       part: 'snippet', mine: true,
       maxResults: 50, pageToken: pageToken
     }).then(function(response){
-      subscriptions.all.splice.apply(subscriptions.all, [subscriptions.all.length, 0].concat(response.result.items) );
+      subscriptions.splice.apply(subscriptions, [subscriptions.length, 0].concat(response.result.items) );
 
       if(response.result.nextPageToken){
         fetchSubscriptions(response.result.nextPageToken);
       } else {
-        try {
-          subscriptions.fetchDate = new Date();
-          localStorage.setItem('YTNew.subscriptions', angular.toJson(subscriptions));
-        } catch(e){
-          console.error('subscriptions', e);
-        }
+        serviceCache.set('subscriptions', subscriptions);
       }
     }, console.error.bind(console, 'subscriptions'));
   }
-
-  if (!subscriptions.fetchDate || new Date(subscriptions.fetchDate) < new Date() - 1000*60*60*24*5) {
-    fetchSubscriptions();
-  }
-
-  return subscriptions.all;
 })
 .run(function(){
   Pgapi.clientId = '699114606672';
