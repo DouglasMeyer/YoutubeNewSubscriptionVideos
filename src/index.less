@@ -13,10 +13,18 @@ body {
 }
 
 
+// Elements
+ul.no-list { list-style-type: none; }
+
+
 // Modules
 body {
   display: flex;
   flex-wrap: wrap;
+  width: 85%;
+  margin: 0 auto;
+  padding: 1rem 0;
+  background-color: #F0F0F0;
 }
 .subscription {
   position: relative;
@@ -36,5 +44,20 @@ body {
     background-color: rgba(255, 255, 255, 0.7);
     overflow-x: hidden;
     text-overflow: ellipsis;
+  }
+}
+.playlist-list {
+  > li {
+    margin: 1rem 0.5rem;
+
+    &.selected {
+      background-color: rgba(0,0,0, 0.2);
+    }
+  }
+}
+.selected-playlist {
+  > ul > li {
+    margin-top: 0.5rem;
+    > img { vertical-align: middle; }
   }
 }

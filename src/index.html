@@ -11,7 +11,10 @@
     <link rel="stylesheet" href="/index.css" />
   </head>
   <body ng-app="YTNew">
-    <ul ng-controller="SubscriptionsCtrl">
+    <!--ul
+      ng-controller="SubscriptionsCtrl"
+      class="no-list"
+    >
       <li
         ng-repeat="subscription in subscriptions"
         title="{{ subscription.snippet.description }}"
@@ -19,8 +22,31 @@
       >
         <img ng-src="{{ subscription.snippet.thumbnails.default.url }}" />
         <div class="title">{{ subscription.snippet.title }}</div>
-        <!--pre>{{ subscription | json }}</pre-->
+      </li>
+    </ul-->
+    <ul class="playlist-list no-list">
+      <li
+        ng-repeat="playlist in ['New Subscription Videos', 'Subscription Videos', 'Watch Later']"
+        ng-class="{ 'selected': playlist == 'New Subscription Videos' }"
+      >
+        {{ playlist }}
       </li>
     </ul>
+    <div
+      class="selected-playlist"
+      ng-controller="NewSubscriptionVideos"
+    >
+      <h2>New Subscription Videos</h2>
+      <ul class="no-list">
+        <li
+          ng-repeat="video in videos"
+        >
+          <img ng-src="{{ video.snippet.thumbnails.default.url }}" width="120" height="90" />
+          <h4>{{ video.snippet.channelTitle }}</h4>
+          <p>{{ video.snippet.title }}</p>
+          <p>{{ video.snippet.description }}</p>
+        </li>
+      </ul>
+    </div>
   </body>
 </html>
