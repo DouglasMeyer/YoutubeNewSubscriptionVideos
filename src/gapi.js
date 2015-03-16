@@ -33,9 +33,24 @@
 
   Pgapi.request = function(service, collection, action, options){
     return services[service].defer.promise.then(function(){
-      return new Promise(function(resolve, reject){
-        gapi.client[service][collection][action](options).then(resolve, reject);
-      });
+      var maxResults = options.maxResults;
+      if (!maxResults || maxResults > 50) options.maxResults = 50;
+
+      return gapi.client[service][collection][action](options)
+        .then(function(response){
+          if (response.result.nextPageToken && (!maxResults || maxResults > 50)){
+            if (maxResults) options.maxResults = maxResults - 50;
+            options.pageToken = response.result.nextPageToken;
+            return Pgapi.request(service, collection, action, options)
+              .then(function(nextResponse){
+                var items = nextResponse.result.items;
+                Array.prototype.splice.apply(items, [items.length,0].concat(response.result.items));
+                return nextResponse;
+              });
+          } else {
+            return response;
+          }
+        });
     });
   };
 

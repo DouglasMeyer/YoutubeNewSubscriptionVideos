@@ -22,7 +22,7 @@ angular.module('YTNew', [])
     var cache;
     try {
       var fetchDate = localStorage.getItem('YTNew.'+service+'.fetchDate');
-      if (fetchDate && new Date(fetchDate).getTime() < new Date() - 1000*60*expiresMinutes) {
+      if (fetchDate && new Date(fetchDate).getTime() > new Date() - 1000*60*expiresMinutes) {
         cache = angular.fromJson(localStorage.getItem('YTNew.'+service));
       } else {
         localStorage.removeItem('YTNew.'+service+'.fetchDate');
@@ -55,21 +55,11 @@ angular.module('YTNew', [])
       }, console.error.bind(console, 'subscriptions'));
   };
 
-  function fetchSubscriptions(pageToken){
+  function fetchSubscriptions(){
     return gapi.request('youtube', 'subscriptions', 'list', {
-      part: 'snippet', mine: true,
-      maxResults: 50, pageToken: pageToken
+      part: 'snippet', mine: true
     }).then(function(response){
-      var subscriptions = response.result.items;
-
-      if(response.result.nextPageToken){
-        return fetchSubscriptions(response.result.nextPageToken)
-          .then(function(nextSubscriptions){
-            return subscriptions.concat(nextSubscriptions);
-          });
-      } else {
-        return subscriptions;
-      }
+      return response.result.items;
     }, console.error.bind(console, 'subscriptions'));
   }
 })
@@ -101,7 +91,6 @@ angular.module('YTNew', [])
     .then(function(playlistItems){
       playlistItems = playlistItems
       .filter(function(i){
-        console.log(i.kind);
         return i.kind == 'youtube#playlistItem';
       })
       .sort(function(a,b){
@@ -118,73 +107,39 @@ angular.module('YTNew', [])
     });
   }
 
-  function fetchChannels(channelIds, pageToken){
+  function fetchChannels(channelIds){
     return gapi.request('youtube', 'channels', 'list', {
       part: 'contentDetails',
-      id: channelIds.splice(0,50).join(','),
-      maxResults: 50, pageToken: pageToken
+      id: channelIds.splice(0,50).join(',')
     }).then(function(response){
       var channels = response.result.items;
-
-      if(response.result.nextPageToken){
-        return fetchChannels([], response.result.nextPageToken)
+      if (channelIds.length){
+        return fetchChannels(channelIds)
           .then(function(nextChannels){
-            channels = channels.concat(nextChannels);
-            if (channelIds.length){
-              return fetchChannels(channelIds)
-                .then(function(nextChannels){
-                  return channels.concat(nextChannels);
-                });
-            } else {
-              return channels;
-            }
+            return channels.concat(nextChannels);
           });
       } else {
         return channels;
       }
-
     });
   }
 
-  function fetchPlaylistItems(playlistIds, maxItems, pageToken){
-    console.log('fetchPlaylistItems', playlistIds);
-    if (!maxItems) maxItems=50;
+  function fetchPlaylistItems(playlistIds, maxItems){
     return gapi.request('youtube', 'playlistItems', 'list', {
       part: 'contentDetails,snippet',
       playlistId: playlistIds,
-      maxResults: (maxItems > 50 ? 50 : maxItems),
-      pageToken: pageToken
+      maxResults: maxItems
     }).then(function(response){
-      var playlistItems = response.result.items;
-      maxItems -= playlistItems.length;
-
-      if(maxItems > 0 && response.result.nextPageToken){
-        return fetchPlaylistItems(playlistIds, maxItems, response.result.nextPageToken)
-          .then(function(nextPlaylistItems){
-            return playlistItems.concat(nextPlaylistItems);
-          });
-      } else {
-        return playlistItems;
-      }
+      return response.result.items;
     });
   }
 
-  function fetchVideos(videoIds, pageToken){
+  function fetchVideos(videoIds){
     return gapi.request('youtube', 'videos', 'list', {
       part: 'snippet',
-      id: videoIds.join(','),
-      maxResults: 50, pageToken: pageToken
+      id: videoIds.join(',')
     }).then(function(response){
-      var videos = response.result.items;
-
-      if(response.result.nextPageToken){
-        return fetchVideos(videoIds, response.result.nextPageToken)
-          .then(function(nextVideos){
-            return videos.concat(nextVideos);
-          });
-      } else {
-        return videos;
-      }
+      return response.result.items;
     });
   }
 })

@@ -19,7 +19,7 @@
         ng-repeat="subscription in subscriptions"
         title="{{ subscription.snippet.description }}"
       >
-        <img ng-src="{{ subscription.snippet.thumbnails.default.url }}" />
+        <img ng-src="{{ subscription.snippet.thumbnails.default.url }}" width="88" height="88" />
         <div class="title">{{ subscription.snippet.title }}</div>
       </li>
     </ul>
