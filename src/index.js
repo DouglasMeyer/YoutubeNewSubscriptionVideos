@@ -93,10 +93,7 @@ angular.module('YTNew', [])
       .filter(function(i){
         return i.kind == 'youtube#playlistItem';
       })
-      .sort(function(a,b){
-        return new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt);
-      });
-      return fetchVideos(playlistItems.slice(0,50).map(function(i){ return i.contentDetails.videoId; }));
+      return fetchVideos(playlistItems.map(function(i){ return i.contentDetails.videoId; }));
     })
     .then(function(videos){
       videos = videos.sort(function(a,b){
@@ -137,9 +134,17 @@ angular.module('YTNew', [])
   function fetchVideos(videoIds){
     return gapi.request('youtube', 'videos', 'list', {
       part: 'snippet',
-      id: videoIds.join(',')
+      id: videoIds.splice(0,50).join(',')
     }).then(function(response){
-      return response.result.items;
+      var videos = response.result.items;
+      if (videoIds.length){
+        return fetchVideos(videoIds)
+          .then(function(nextVideos){
+            return videos.concat(nextVideos);
+          });
+      } else {
+        return videos;
+      }
     });
   }
 })
