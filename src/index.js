@@ -38,9 +38,9 @@ angular.module('YTNew', [])
   this.get = function(service, expiresMinutes){
     var cache;
     var fetchDate = localStorage.getItem('YTNew.'+service+'.fetchDate');
-    var expiredCache = fetchDate && new Date(fetchDate).getTime() > new Date() - 1000*60*expiresMinutes;
+    var isCacheFresh = fetchDate && new Date(fetchDate).getTime() > new Date() - 1000*60*expiresMinutes;
     try {
-      if (expiredCache) {
+      if (isCacheFresh) {
         cache = angular.fromJson(localStorage.getItem('YTNew.'+service));
       } else {
         localStorage.removeItem('YTNew.'+service+'.fetchDate');
@@ -60,23 +60,28 @@ angular.module('YTNew', [])
   };
 })
 .factory('getSubscriptions', function(gapi, serviceCache, $q){
+  var subscriptions;
   return function(youngerThanMinutes){
+    if (subscriptions) return subscriptions.fork();
     if (youngerThanMinutes === undefined) youngerThanMinutes = 60*24*5;
-    var subscriptions = serviceCache.get('subscriptions', youngerThanMinutes);
+    subscriptions = serviceCache.get('subscriptions', youngerThanMinutes);
     if (subscriptions) return highland(subscriptions);
     subscriptions = gapi.request('youtube', 'subscriptions', 'list', {
       part: 'snippet', mine: true, order: 'unread'
     });
-    subscriptions.fork().toArray(function(subscriptions){
-      serviceCache.set('subscriptions', subscriptions);
+    subscriptions.fork().toArray(function(s){
+      subscriptions = null;
+      serviceCache.set('subscriptions', s);
     });
     return subscriptions.fork();
   };
 })
 .factory('getSubscriptionVideos', function(gapi, serviceCache, $q, getSubscriptions){
+  var subscriptionVideos;
   return function(youngerThanMinutes){
+    if (subscriptionVideos) return subscriptionVideos.fork();
     if (youngerThanMinutes === undefined) youngerThanMinutes = 2;
-    var subscriptionVideos = serviceCache.get('subscriptionVideos', youngerThanMinutes);
+    subscriptionVideos = serviceCache.get('subscriptionVideos', youngerThanMinutes);
     if (subscriptionVideos) return highland(subscriptionVideos);
     subscriptionVideos = getSubscriptions()
       .map(function(subscription){
@@ -112,8 +117,9 @@ angular.module('YTNew', [])
       })
       .parallel(30)
       .flatten();
-    subscriptionVideos.fork().toArray(function(subscriptionVideos){
-      serviceCache.set('subscriptionVideos', subscriptionVideos);
+    subscriptionVideos.fork().toArray(function(s){
+      subscriptionVideos = null;
+      serviceCache.set('subscriptionVideos', s);
     });
     return subscriptionVideos.fork();
   };
