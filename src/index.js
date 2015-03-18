@@ -1,3 +1,7 @@
+function logError(name){
+  return function(e){ console.error(name, e.stack); }
+}
+
 Pgapi.authorize({
   immediate: true
 }).catch(function(result){
@@ -5,7 +9,7 @@ Pgapi.authorize({
   return Pgapi.authorize();
 }).then(function(result){
   console.log('auth', result, new Date(result.expires_at*1000));
-}, console.error.bind(console, 'auth'));
+}, logError('auth'));
 
 angular.module('YTNew', [])
 .service('gapi', function($q){
@@ -13,24 +17,36 @@ angular.module('YTNew', [])
   //  return $q.when( Pgapi.authorize.apply(Pgapi, arguments) );
   //};
   this.request = function(){
-    return $q.when( Pgapi.request.apply(Pgapi, arguments) );
+    var requestArgs = arguments;
+    return highland(function(push, next){
+      Pgapi.request.apply(Pgapi, requestArgs)
+        .then(function(){
+          push(null, highland.nil);
+        }, function(err){
+          push(err);
+          push(null, highland.nil);
+        }, function(result){
+          result.items.forEach(function(item){
+            push(null, item);
+          });
+        });
+    });
   };
 })
 .service('serviceCache', function(){
 
   this.get = function(service, expiresMinutes){
     var cache;
+    var fetchDate = localStorage.getItem('YTNew.'+service+'.fetchDate');
+    var expiredCache = fetchDate && new Date(fetchDate).getTime() > new Date() - 1000*60*expiresMinutes;
     try {
-      var fetchDate = localStorage.getItem('YTNew.'+service+'.fetchDate');
-      if (fetchDate && new Date(fetchDate).getTime() > new Date() - 1000*60*expiresMinutes) {
+      if (expiredCache) {
         cache = angular.fromJson(localStorage.getItem('YTNew.'+service));
       } else {
         localStorage.removeItem('YTNew.'+service+'.fetchDate');
         localStorage.removeItem('YTNew.'+service);
       }
-    } catch(e){
-      console.error('serviceCache', service, e);
-    }
+    } catch(e){ }
     return cache;
   };
 
@@ -39,127 +55,82 @@ angular.module('YTNew', [])
       localStorage.setItem('YTNew.'+service+'.fetchDate', new Date());
       localStorage.setItem('YTNew.'+service, angular.toJson(value));
     } catch(e){
-      console.error('subscriptions', e);
+      console.error('subscriptions', service, e.stack);
     }
   };
 })
 .factory('getSubscriptions', function(gapi, serviceCache, $q){
   return function(youngerThanMinutes){
-    if (!youngerThanMinutes) youngerThanMinutes = 60*24*5;
+    if (youngerThanMinutes === undefined) youngerThanMinutes = 60*24*5;
     var subscriptions = serviceCache.get('subscriptions', youngerThanMinutes);
-    if (subscriptions) return $q.when(subscriptions);
-    return fetchSubscriptions()
-      .then(function(subscriptions){
-        serviceCache.set('subscriptions', subscriptions);
-        return subscriptions;
-      }, console.error.bind(console, 'subscriptions'));
+    if (subscriptions) return highland(subscriptions);
+    subscriptions = gapi.request('youtube', 'subscriptions', 'list', {
+      part: 'snippet', mine: true, order: 'unread'
+    });
+    subscriptions.fork().toArray(function(subscriptions){
+      serviceCache.set('subscriptions', subscriptions);
+    });
+    return subscriptions.fork();
   };
-
-  function fetchSubscriptions(){
-    return gapi.request('youtube', 'subscriptions', 'list', {
-      part: 'snippet', mine: true
-    }).then(function(response){
-      return response.result.items;
-    }, console.error.bind(console, 'subscriptions'));
-  }
 })
 .factory('getSubscriptionVideos', function(gapi, serviceCache, $q, getSubscriptions){
   return function(youngerThanMinutes){
-    if (!youngerThanMinutes) youngerThanMinutes = 2;
+    if (youngerThanMinutes === undefined) youngerThanMinutes = 2;
     var subscriptionVideos = serviceCache.get('subscriptionVideos', youngerThanMinutes);
-    if (subscriptionVideos) return $q.when(subscriptionVideos);
-    return fetchSubscriptionVideos();
-  };
-
-  function fetchSubscriptionVideos(){
-    return getSubscriptions()
-    .then(function(subscriptions){
-      return fetchChannels(subscriptions.map(function(s){ return s.snippet.resourceId.channelId; }));
-    })
-    .then(function(channels){
-      var playlistIds = channels.map(function(c){ return c.contentDetails.relatedPlaylists.uploads; });
-      var latestFetch = $q.when( [] );
-      playlistIds.forEach(function(playlistId){
-        latestFetch = latestFetch.then(function(playlistItems){
-          return fetchPlaylistItems(playlistId, 10).then(function(nextPlaylistItems){
-            return playlistItems.concat(nextPlaylistItems);
-          });
-        });
-      });
-      return latestFetch;
-    })
-    .then(function(playlistItems){
-      playlistItems = playlistItems
-      .filter(function(i){
-        return i.kind == 'youtube#playlistItem';
+    if (subscriptionVideos) return highland(subscriptionVideos);
+    subscriptionVideos = getSubscriptions()
+      .map(function(subscription){
+        return subscription.snippet.resourceId.channelId;
       })
-      return fetchVideos(playlistItems.map(function(i){ return i.contentDetails.videoId; }));
-    })
-    .then(function(videos){
-      videos = videos.sort(function(a,b){
-        return new Date(b.snippet.publishedAt) - new Date(a.snippet.publishedAt);
-      });
-      serviceCache.set('subscriptionVideos', videos);
-      return videos;
+      .batch(50)
+      .map(function(channelIds){
+        return gapi.request('youtube', 'channels', 'list', {
+          part: 'contentDetails',
+          id: channelIds.join(',')
+        });
+      })
+      .parallel(30)
+      .flatten()
+      .map(function(channel){
+        return gapi.request('youtube', 'playlistItems', 'list', {
+          part: 'contentDetails',
+          playlistId: channel.contentDetails.relatedPlaylists.uploads,
+          maxResults: 10
+        });
+      })
+      .parallel(30)
+      .flatten()
+      .map(function(playlistItem){
+        return playlistItem.contentDetails.videoId;
+      })
+      .batch(50)
+      .map(function(videoIds){
+        return gapi.request('youtube', 'videos', 'list', {
+          part: 'snippet',
+          id: videoIds.join(',')
+        });
+      })
+      .parallel(30)
+      .flatten();
+    subscriptionVideos.fork().toArray(function(subscriptionVideos){
+      serviceCache.set('subscriptionVideos', subscriptionVideos);
     });
-  }
-
-  function fetchChannels(channelIds){
-    return gapi.request('youtube', 'channels', 'list', {
-      part: 'contentDetails',
-      id: channelIds.splice(0,50).join(',')
-    }).then(function(response){
-      var channels = response.result.items;
-      if (channelIds.length){
-        return fetchChannels(channelIds)
-          .then(function(nextChannels){
-            return channels.concat(nextChannels);
-          });
-      } else {
-        return channels;
-      }
-    });
-  }
-
-  function fetchPlaylistItems(playlistIds, maxItems){
-    return gapi.request('youtube', 'playlistItems', 'list', {
-      part: 'contentDetails,snippet',
-      playlistId: playlistIds,
-      maxResults: maxItems
-    }).then(function(response){
-      return response.result.items;
-    });
-  }
-
-  function fetchVideos(videoIds){
-    return gapi.request('youtube', 'videos', 'list', {
-      part: 'snippet',
-      id: videoIds.splice(0,50).join(',')
-    }).then(function(response){
-      var videos = response.result.items;
-      if (videoIds.length){
-        return fetchVideos(videoIds)
-          .then(function(nextVideos){
-            return videos.concat(nextVideos);
-          });
-      } else {
-        return videos;
-      }
-    });
-  }
+    return subscriptionVideos.fork();
+  };
 })
-.run(function(){
+.run(function($q){
+  Pgapi.defer = $q.defer;
   Pgapi.clientId = '699114606672';
   Pgapi.apiKey = 'AIzaSyAxLW9JhtdCuwSNYctaI9VO9iapzU7Jibk';
-  Pgapi.load('youtube');
+  Pgapi.load('youtube', { scope: 'https://www.googleapis.com/auth/youtube.readonly' });
 })
 .controller('SubscriptionsCtrl', function($scope, getSubscriptions){
-  getSubscriptions().then(function(subscriptions){
-    $scope.subscriptions = subscriptions;
+  getSubscriptions().toArray(function(subscriptions){
+      $scope.subscriptions = subscriptions;
   });
 })
 .controller('NewSubscriptionVideos', function($scope, getSubscriptionVideos){
-  getSubscriptionVideos().then(function(videos){
+  getSubscriptionVideos().toArray(function(videos){
     $scope.videos = videos;
   });
 });

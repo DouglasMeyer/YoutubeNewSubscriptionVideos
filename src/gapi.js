@@ -2,55 +2,68 @@
 
   window.Pgapi = {
     clientId: null,
-    apiKey: null
+    apiKey: null,
+    defer: Promise.defer.bind(Promise)
   };
 
   var scopes=[],
-      gapiDefer = Promise.defer(),
-      authDefer = Promise.defer();
+      gapiDefer = Pgapi.defer(),
+      authDefer = Pgapi.defer();
 
   Pgapi.authorize = function(options){
+    if (!options) options = {};
     return gapiDefer.promise.then(function(){
-      return new Promise(function(resolve, reject){
-        gapi.auth.authorize({
-          client_id: Pgapi.clientId,
-          scope: scopes.join(','),
-          immediate: options.immediate || false
-        }, function(authResult){
-          if (authResult && !authResult.error){
-            if (authDefer){
-              authDefer.resolve(authResult);
-              authDefer = null;
-            }
-            resolve(authResult);
-          } else {
-            reject(authResult);
+      var deferAuth = Pgapi.defer();
+
+      gapi.auth.authorize({
+        client_id: Pgapi.clientId,
+        scope: scopes.join(','),
+        immediate: options.immediate || false
+      }, function(authResult){
+        if (authResult && !authResult.error){
+          if (authDefer){
+            authDefer.resolve(authResult);
+            authDefer = null;
           }
-        });
+          deferAuth.resolve(authResult);
+        } else {
+          deferAuth.reject(authResult);
+        }
       });
+
+      return deferAuth.promise;
     });
   };
 
-  Pgapi.request = function(service, collection, action, options){
-    return services[service].defer.promise.then(function(){
+  Pgapi.request = function(serviceName, collection, action, options){
+    var service = services[serviceName];
+    if (!service.defer) service.defer = Pgapi.defer();
+    return service.defer.promise.then(function(){
       var maxResults = options.maxResults;
       if (!maxResults || maxResults > 50) options.maxResults = 50;
 
-      return gapi.client[service][collection][action](options)
-        .then(function(response){
-          if (response.result.nextPageToken && (!maxResults || maxResults > 50)){
-            if (maxResults) options.maxResults = maxResults - 50;
-            options.pageToken = response.result.nextPageToken;
-            return Pgapi.request(service, collection, action, options)
-              .then(function(nextResponse){
-                var items = nextResponse.result.items;
-                Array.prototype.splice.apply(items, [items.length,0].concat(response.result.items));
-                return nextResponse;
+      var deferredRequest = Pgapi.defer();
+      gapi.client[serviceName][collection][action](options).then(function(response){
+        if (deferredRequest.notify) deferredRequest.notify(response.result);
+
+        if (response.result.nextPageToken && (!maxResults || maxResults > 50)){
+          if (maxResults) options.maxResults = maxResults - 50;
+          options.pageToken = response.result.nextPageToken;
+          Pgapi.request(serviceName, collection, action, options)
+            .then(function(nextResponse){
+              if (deferredRequest.notify) deferredRequest.notify(nextResponse.result);
+              deferredRequest.resolve({
+                etag: nextResponse.result.etag,
+                items: response.result.items.concat(nextResponse.result.items),
+                kind: nextResponse.result.kind,
+                pageInfo: nextResponse.result.pageInfo
               });
-          } else {
-            return response;
-          }
-        });
+            });
+        } else {
+          deferredRequest.resolve(response);
+        }
+      });
+      return deferredRequest.promise;
     });
   };
 
@@ -65,13 +78,11 @@
   var services = {};
   services['youtube'] = {
     scope: 'https://www.googleapis.com/auth/youtube',
-    version: 'v3',
-    defer: Promise.defer()
+    version: 'v3'
   };
   services['drive'] = {
     scope: 'https://www.googleapis.com/auth/drive',
-    version: 'v2',
-    defer: Promise.defer()
+    version: 'v2'
   };
 
   Pgapi.load = function(serviceName, options){
@@ -79,6 +90,7 @@
     if (!options) options = {};
     if (!service) throw 'No service named"'+serviceName+'"';
 
+    if (!service.defer) service.defer = Pgapi.defer();
     scopes.push( options.scope || service.scope );
     authDefer.promise.then(function(){
       gapi.client.load(serviceName, options.version || service.version, function(){
