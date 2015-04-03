@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "description": "",
   "scripts": {
+    "deploy": "gulp build && firebase deploy && git tag -f firebase",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Douglas Meyer <Douglas.Meyer@mail.com>",

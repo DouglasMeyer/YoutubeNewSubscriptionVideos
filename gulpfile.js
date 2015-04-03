@@ -12,8 +12,8 @@ var livereload, injectReload, watch, karma;
 
 var C = {
   dev: false,
-  port: 4000,
-  lrPort: 35733,
+  port: process.env.PORT || 4000,
+  lrPort: 35729 + Math.floor(Math.random() * 100),
   paths: {
     scripts: 'src/**/*.js',
     styles:  'src/**/*.less',

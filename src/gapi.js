@@ -93,9 +93,7 @@
     if (!service.defer) service.defer = Pgapi.defer();
     scopes.push( options.scope || service.scope );
     authDefer.promise.then(function(){
-      gapi.client.load(serviceName, options.version || service.version, function(){
-        service.defer.resolve();
-      });
+      gapi.client.load(serviceName, options.version || service.version, service.defer.resolve);
     });
   };
 

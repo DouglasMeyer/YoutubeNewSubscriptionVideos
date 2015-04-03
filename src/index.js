@@ -1,17 +1,15 @@
-function logError(name){
-  return function(e){ console.error(name, e.stack); }
+if (!Array.prototype.find){
+  Array.prototype.find = function(fn){
+    var value;
+    for (var i=0; i < this.length; i++){
+      value = this[i];
+      if (fn.call(null, value, i, this)) return value;
+    }
+  };
 }
 
-Pgapi.authorize({
-  immediate: true
-}).catch(function(result){
-  console.error('auth', result);
-  return Pgapi.authorize();
-}).then(function(result){
-  console.log('auth', result, new Date(result.expires_at*1000));
-}, logError('auth'));
-
 angular.module('YTNew', [])
+.value('notifications', [])
 .service('gapi', function($q){
   //this.authorize = function(){
   //  return $q.when( Pgapi.authorize.apply(Pgapi, arguments) );
@@ -65,7 +63,10 @@ angular.module('YTNew', [])
     if (subscriptions) return subscriptions.fork();
     if (youngerThanMinutes === undefined) youngerThanMinutes = 60*24*5;
     subscriptions = serviceCache.get('subscriptions', youngerThanMinutes);
-    if (subscriptions) return highland(subscriptions);
+    if (subscriptions) {
+      subscriptions = highland(subscriptions);
+      return subscriptions.fork();
+    }
     subscriptions = gapi.request('youtube', 'subscriptions', 'list', {
       part: 'snippet', mine: true, order: 'unread'
     });
@@ -82,7 +83,10 @@ angular.module('YTNew', [])
     if (subscriptionVideos) return subscriptionVideos.fork();
     if (youngerThanMinutes === undefined) youngerThanMinutes = 2;
     subscriptionVideos = serviceCache.get('subscriptionVideos', youngerThanMinutes);
-    if (subscriptionVideos) return highland(subscriptionVideos);
+    if (subscriptionVideos) {
+      subscriptionVideos = highland(subscriptionVideos)
+      return subscriptionVideos;
+    }
     subscriptionVideos = getSubscriptions()
       .map(function(subscription){
         return subscription.snippet.resourceId.channelId;
@@ -124,19 +128,48 @@ angular.module('YTNew', [])
     return subscriptionVideos.fork();
   };
 })
-.run(function($q){
+.run(function($q, notifications){
   Pgapi.defer = $q.defer;
   Pgapi.clientId = '699114606672';
   Pgapi.apiKey = 'AIzaSyAxLW9JhtdCuwSNYctaI9VO9iapzU7Jibk';
   Pgapi.load('youtube', { scope: 'https://www.googleapis.com/auth/youtube.readonly' });
+
+  Pgapi.authorize({
+    immediate: true
+  }).catch(function(result){
+    return Pgapi.authorize();
+  }).then(function(result){
+    console.log('auth', result, new Date(result.expires_at*1000));
+  }, function(result){
+    var notification = {
+      body: "Could not get autorization. Make sure pop-ups aren't blocked.",
+      click: function(){
+        var index = notifications.indexOf(notification);
+        notifications.splice(index, 1);
+      }
+    };
+    notifications.push(notification);
+  });
+})
+.controller('NotificationsCtrl', function($scope, notifications){
+  $scope.notifications = notifications;
 })
 .controller('SubscriptionsCtrl', function($scope, getSubscriptions){
   getSubscriptions().toArray(function(subscriptions){
-      $scope.subscriptions = subscriptions;
+    $scope.subscriptions = subscriptions;
   });
 })
-.controller('NewSubscriptionVideos', function($scope, getSubscriptionVideos){
-  getSubscriptionVideos().toArray(function(videos){
-    $scope.videos = videos;
+.controller('NewSubscriptionVideos', function($scope, getSubscriptions, getSubscriptionVideos){
+  var gs = getSubscriptions(),
+      gv = getSubscriptionVideos();
+  gs.toArray(function(subscriptions){
+    gv.map(function(video){
+      video.subscription = subscriptions.find(function(sub){
+        return sub.snippet.resourceId.channelId === video.snippet.channelId;
+      });
+      return video;
+    }).toArray(function(videos){
+      $scope.videos = videos;
+    });
   });
 });

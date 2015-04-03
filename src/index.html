@@ -11,6 +11,15 @@
   </head>
   <body ng-app="YTNew">
     <ul
+      class="notifications"
+      ng-controller="NotificationsCtrl"
+    >
+      <li
+        ng-repeat="notification in notifications"
+        ng-click="notification.click()"
+      >{{ notification.body }}</li>
+    </ul>
+    <!--ul
       ng-controller="SubscriptionsCtrl"
       class="no-list subscriptions"
     >
@@ -22,7 +31,7 @@
         <img ng-src="{{ subscription.snippet.thumbnails.default.url }}" width="88" height="88" />
         <div class="title">{{ subscription.snippet.title }}</div>
       </li>
-    </ul>
+    </ul-->
     <ul class="playlist-list no-list">
       <li
         ng-cloak
@@ -40,12 +49,21 @@
       <ul class="no-list">
         <li
           ng-cloak
+          class="video"
           ng-repeat="video in videos | orderBy:'-snippet.publishedAt'"
         >
-          <img ng-src="{{ video.snippet.thumbnails.default.url }}" width="120" height="90" />
-          <h4>{{ video.snippet.channelTitle }}</h4>
-          <h3>{{ video.snippet.title }}</h3>
-          <p>{{ video.snippet.description }}</p>
+          <div class="video__checkbox">
+            <img ng-src="{{ video.subscription.snippet.thumbnails.default.url }}" width="88" height="88" />
+          </div>
+          <img class="video__image"
+            ng-src="{{ video.snippet.thumbnails.default.url }}"
+            width="120" height="90"
+          />
+          <div class="video__info">
+            <h4>{{ video.snippet.channelTitle }}</h4>
+            <h3>{{ video.snippet.title }}</h3>
+            <p>{{ video.snippet.description }}</p>
+          </div>
         </li>
       </ul>
     </div>
