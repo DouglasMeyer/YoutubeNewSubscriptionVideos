@@ -1,15 +1,89 @@
 if (!Array.prototype.find){
   Array.prototype.find = function(fn){
-    var value;
-    for (var i=0; i < this.length; i++){
-      value = this[i];
-      if (fn.call(null, value, i, this)) return value;
+    for (var pair of this){
+      if (fn.call(null, pair[1], pair[0], this)) return pair[1];
     }
   };
 }
 
 angular.module('YTNew', [])
 .value('notifications', [])
+.service('Models', function(gapi){
+
+  ModelJS.NewModelProperties['models'] = {
+    get: function(){ return this._models || (this._models = new Map()); }
+  };
+
+  function extend(dest){
+    var sources = Array.prototype.slice.call(arguments, 1);
+    sources.forEach(function(source){
+      if (!source) return;
+      Object.keys(source).forEach(function(key){
+        dest[key] = source[key];
+      });
+    });
+    return dest;
+  }
+
+  ModelJS.NewModelProperties['load'] = {
+    value: function(item){
+      var Model = this;
+      var model = Model.models.get(item.id);
+      if (model){
+        model.load(item.snippet);
+      } else {
+        model = new Model(extend({ id: item.id }, item.snippet, item.contentDetails));
+        Model.models.set(item.id, model);
+      }
+      return model;
+    }
+  };
+
+  ModelJS.NewModelPrototypeProperties['load'] = {
+    value: function(props){ extend(this, props); }
+  };
+
+  ModelJS.NewModelProperties['find'] = {
+    value: function(findOpts){
+      var Model = this;
+
+      return gapi
+        .request('youtube', this.collectionName, 'list', findOpts)
+        .map(Model.load.bind(Model));
+    }
+  };
+  delete ModelJS.NewModelPrototypeProperties['save'];
+  delete ModelJS.NewModelPrototypeProperties['destroy'];
+
+  var Subscription = ModelJS();
+  Subscription.collectionName = 'subscriptions';
+
+  var Channel = ModelJS();
+  Channel.collectionName = 'channels';
+
+  var PlaylistItem = ModelJS();
+  PlaylistItem.collectionName = 'playlistItems';
+
+  var Video = ModelJS();
+  Video.collectionName = 'videos';
+  Object.defineProperty(Video.prototype, 'channelId', {
+    enumerable: true,
+    get: function(){
+      this._channelId;
+    },
+    set: function(channelId){
+      this._channelId = channelId;
+      this.channel = Channel.models.get(channelId);
+    }
+  });
+
+  return {
+    Subscription: Subscription,
+    Channel: Channel,
+    PlaylistItem: PlaylistItem,
+    Video: Video
+  };
+})
 .service('gapi', function($q){
   //this.authorize = function(){
   //  return $q.when( Pgapi.authorize.apply(Pgapi, arguments) );
@@ -31,101 +105,52 @@ angular.module('YTNew', [])
     });
   };
 })
-.service('serviceCache', function(){
+.factory('getSubscriptionVideos', function(gapi, $q, Models){
+  return function(){
+    var deferredSubscriptionVideos = $q.defer();
 
-  this.get = function(service, expiresMinutes){
-    var cache;
-    var fetchDate = localStorage.getItem('YTNew.'+service+'.fetchDate');
-    var isCacheFresh = fetchDate && new Date(fetchDate).getTime() > new Date() - 1000*60*expiresMinutes;
-    try {
-      if (isCacheFresh) {
-        cache = angular.fromJson(localStorage.getItem('YTNew.'+service));
-      } else {
-        localStorage.removeItem('YTNew.'+service+'.fetchDate');
-        localStorage.removeItem('YTNew.'+service);
-      }
-    } catch(e){ }
-    return cache;
-  };
-
-  this.set = function(service, value){
-    try {
-      localStorage.setItem('YTNew.'+service+'.fetchDate', new Date());
-      localStorage.setItem('YTNew.'+service, angular.toJson(value));
-    } catch(e){
-      console.error('subscriptions', service, e.stack);
-    }
-  };
-})
-.factory('getSubscriptions', function(gapi, serviceCache, $q){
-  var subscriptions;
-  return function(youngerThanMinutes){
-    if (subscriptions) return subscriptions.fork();
-    if (youngerThanMinutes === undefined) youngerThanMinutes = 60*24*5;
-    subscriptions = serviceCache.get('subscriptions', youngerThanMinutes);
-    if (subscriptions) {
-      subscriptions = highland(subscriptions);
-      return subscriptions.fork();
-    }
-    subscriptions = gapi.request('youtube', 'subscriptions', 'list', {
+    Models.Subscription.find({
       part: 'snippet', mine: true, order: 'unread'
-    });
-    subscriptions.fork().toArray(function(s){
-      subscriptions = null;
-      serviceCache.set('subscriptions', s);
-    });
-    return subscriptions.fork();
-  };
-})
-.factory('getSubscriptionVideos', function(gapi, serviceCache, $q, getSubscriptions){
-  var subscriptionVideos;
-  return function(youngerThanMinutes){
-    if (subscriptionVideos) return subscriptionVideos.fork();
-    if (youngerThanMinutes === undefined) youngerThanMinutes = 2;
-    subscriptionVideos = serviceCache.get('subscriptionVideos', youngerThanMinutes);
-    if (subscriptionVideos) {
-      subscriptionVideos = highland(subscriptionVideos)
-      return subscriptionVideos;
-    }
-    subscriptionVideos = getSubscriptions()
-      .map(function(subscription){
-        return subscription.snippet.resourceId.channelId;
-      })
-      .batch(50)
-      .map(function(channelIds){
-        return gapi.request('youtube', 'channels', 'list', {
-          part: 'contentDetails',
-          id: channelIds.join(',')
-        });
-      })
-      .parallel(30)
-      .flatten()
-      .map(function(channel){
-        return gapi.request('youtube', 'playlistItems', 'list', {
-          part: 'contentDetails',
-          playlistId: channel.contentDetails.relatedPlaylists.uploads,
-          maxResults: 10
-        });
-      })
-      .parallel(30)
-      .flatten()
-      .map(function(playlistItem){
-        return playlistItem.contentDetails.videoId;
-      })
-      .batch(50)
-      .map(function(videoIds){
-        return gapi.request('youtube', 'videos', 'list', {
-          part: 'snippet',
-          id: videoIds.join(',')
-        });
-      })
-      .parallel(30)
-      .flatten();
-    subscriptionVideos.fork().toArray(function(s){
-      subscriptionVideos = null;
-      serviceCache.set('subscriptionVideos', s);
-    });
-    return subscriptionVideos.fork();
+    })
+    .map(function(subscription){
+      return subscription.resourceId.channelId;
+    })
+    .batch(50)
+    .map(function(channelIds){
+      return Models.Channel.find({
+        part: 'contentDetails',
+        id: channelIds.join(',')
+      });
+    })
+    .parallel(30)
+    .flatten()
+    .map(function(channel){
+      channel.subscription = Array.prototype.find.call(Models.Subscription.models, function(s){
+        return s.resourceId.channelId === channel.id;
+      });
+      return Models.PlaylistItem.find({
+        part: 'contentDetails',
+        playlistId: channel.relatedPlaylists.uploads,
+        maxResults: 10
+      });
+    })
+    .parallel(30)
+    .flatten()
+    .map(function(playlistItem){
+      return playlistItem.videoId;
+    })
+    .batch(50)
+    .map(function(videoIds){
+      return Models.Video.find({
+        part: 'snippet',
+        id: videoIds.join(',')
+      });
+    })
+    .parallel(30)
+    .flatten()
+    .toArray(deferredSubscriptionVideos.resolve);
+
+    return deferredSubscriptionVideos.promise;
   };
 })
 .run(function($q, notifications){
@@ -159,17 +184,14 @@ angular.module('YTNew', [])
     $scope.subscriptions = subscriptions;
   });
 })
-.controller('NewSubscriptionVideos', function($scope, getSubscriptions, getSubscriptionVideos){
-  var gs = getSubscriptions(),
-      gv = getSubscriptionVideos();
-  gs.toArray(function(subscriptions){
-    gv.map(function(video){
-      video.subscription = subscriptions.find(function(sub){
-        return sub.snippet.resourceId.channelId === video.snippet.channelId;
-      });
-      return video;
-    }).toArray(function(videos){
+.controller('NewSubscriptionVideos', function($scope, getSubscriptionVideos){
+  function updateSubscriptionVideos(){
+    getSubscriptionVideos().then(function(videos){
       $scope.videos = videos;
     });
-  });
+  }
+
+  updateSubscriptionVideos();
+  var minute = 1000*60;
+  setInterval(updateSubscriptionVideos, 5*minute);
 });
