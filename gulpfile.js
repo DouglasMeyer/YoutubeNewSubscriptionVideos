@@ -17,7 +17,7 @@ var C = {
   paths: {
     scripts: 'src/**/*.js',
     styles:  'src/**/*.less',
-    markup:   'src/**/*.html'
+    markup:  'src/**/*.html'
   }
 };
 

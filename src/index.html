@@ -7,6 +7,8 @@
     <script src="/highland.js"></script>
     <script src="/gapi.js"></script>
     <script src="/model_js.js"></script>
+    <script src="/moment.js"></script>
+    <script src="/ng-time-relative.js"></script>
     <script src="/index.js"></script>
     <link rel="stylesheet" href="/index.css" />
   </head>
@@ -47,6 +49,7 @@
       ng-controller="NewSubscriptionVideos"
     >
       <h2>New Subscription Videos</h2>
+      <time relative without-suffix datetime="{{nextFetchAt}}"></time>
       <ul class="no-list">
         <li
           ng-cloak
@@ -62,7 +65,7 @@
           />
           <div class="video__info">
             <h4>{{ video.channelTitle }}</h4>
-            <h3>{{ video.title }}</h3>
+            <h3><a ng-href="https://www.youtube.com/watch?v={{ video.id }}">{{ video.title }}</a></h3>
             <p>{{ video.description }}</p>
           </div>
         </li>

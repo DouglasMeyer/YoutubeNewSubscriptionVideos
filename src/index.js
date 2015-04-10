@@ -6,7 +6,7 @@ if (!Array.prototype.find){
   };
 }
 
-angular.module('YTNew', [])
+angular.module('YTNew', ['timeRelative'])
 .value('notifications', [])
 .service('Models', function(gapi){
 
@@ -105,39 +105,57 @@ angular.module('YTNew', [])
     });
   };
 })
-.factory('getSubscriptionVideos', function(gapi, $q, Models){
-  return function(){
-    var deferredSubscriptionVideos = $q.defer();
+.factory('getNewSubscriptionVideos', function(gapi, $q, Models){
+  var cachedChannels = { expires: Date.now() };
 
-    Models.Subscription.find({
-      part: 'snippet', mine: true, order: 'unread'
-    })
-    .map(function(subscription){
-      return subscription.resourceId.channelId;
-    })
-    .batch(50)
-    .map(function(channelIds){
-      return Models.Channel.find({
-        part: 'contentDetails',
-        id: channelIds.join(',')
+  return function(){
+    var deferredSubscriptionVideos = $q.defer(),
+        channelStream;
+
+    if (cachedChannels.expires <= Date.now()){
+      channelStream = Models.Subscription.find({
+        part: 'snippet', mine: true, order: 'unread'
+      })
+      .map(function(subscription){
+        return subscription.resourceId.channelId;
+      })
+      .batch(50)
+      .map(function(channelIds){
+        return Models.Channel.find({
+          part: 'contentDetails',
+          id: channelIds.join(',')
+        });
+      })
+      .parallel(100)
+      .flatten()
+      .map(function(channel){
+        channel.subscription = Array.prototype.find.call(Models.Subscription.models, function(s){
+          return s.resourceId.channelId === channel.id;
+        });
+        return channel;
       });
-    })
-    .parallel(30)
-    .flatten()
+      channelStream.observe().toArray(function(channels){
+        cachedChannels.value = channels;
+        cachedChannels.expires = Date.now() + 1000*60 * 60;
+      });
+    } else {
+      channelStream = highland(cachedChannels.value);
+    }
+    channelStream
     .map(function(channel){
-      channel.subscription = Array.prototype.find.call(Models.Subscription.models, function(s){
-        return s.resourceId.channelId === channel.id;
-      });
       return Models.PlaylistItem.find({
         part: 'contentDetails',
         playlistId: channel.relatedPlaylists.uploads,
         maxResults: 10
       });
     })
-    .parallel(30)
+    .parallel(100)
     .flatten()
     .map(function(playlistItem){
       return playlistItem.videoId;
+    })
+    .filter(function(videoId){
+      return Models.Video.models.get(videoId) === undefined;
     })
     .batch(50)
     .map(function(videoIds){
@@ -146,52 +164,88 @@ angular.module('YTNew', [])
         id: videoIds.join(',')
       });
     })
-    .parallel(30)
+    .parallel(100)
     .flatten()
+    .errors(function(errorResponse, push){
+      deferredSubscriptionVideos.reject(errorResponse);
+    })
     .toArray(deferredSubscriptionVideos.resolve);
 
     return deferredSubscriptionVideos.promise;
   };
 })
-.run(function($q, notifications){
+.factory('getAuth', function($q, notifications){
+  var authPromise, expireTimeout;
+  return function(){
+    if (authPromise) return authPromise;
+
+    if (expireTimeout) clearTimeout(expireTimeout);
+    expireTimeout = undefined;
+
+    authPromise = Pgapi.authorize({
+      immediate: true
+    }).catch(function(result){
+      return Pgapi.authorize();
+    }).then(function(result){
+      try {
+        localStorage.setItem('YTNew.access_token', result.access_token);
+      } catch(e){}
+      expireTimeout = setTimeout(function(){
+        authPromise = undefined;
+        expireTimeout = undefined;
+      }, parseInt(result.expires_in, 10)*1000);
+    }, function(result){
+      authPromise = undefined;
+      var notification = {
+        body: "Could not get autorization. Make sure pop-ups aren't blocked.",
+        click: function(){
+          var index = notifications.indexOf(notification);
+          notifications.splice(index, 1);
+        }
+      };
+      notifications.push(notification);
+    });
+
+    return authPromise;
+  }
+})
+.run(function($q, getAuth){
   Pgapi.defer = $q.defer;
   Pgapi.clientId = '699114606672';
   Pgapi.apiKey = 'AIzaSyAxLW9JhtdCuwSNYctaI9VO9iapzU7Jibk';
   Pgapi.load('youtube', { scope: 'https://www.googleapis.com/auth/youtube.readonly' });
 
-  Pgapi.authorize({
-    immediate: true
-  }).catch(function(result){
-    return Pgapi.authorize();
-  }).then(function(result){
-    console.log('auth', result, new Date(result.expires_at*1000));
-  }, function(result){
-    var notification = {
-      body: "Could not get autorization. Make sure pop-ups aren't blocked.",
-      click: function(){
-        var index = notifications.indexOf(notification);
-        notifications.splice(index, 1);
-      }
-    };
-    notifications.push(notification);
+  Pgapi.gapiPromise.then(function(){
+    try {
+      var token = localStorage.getItem('YTNew.access_token');
+      gapi.auth.setToken({ access_token: token });
+      getAuth();
+    } catch (e){ console.error('setToken', e); }
   });
 })
 .controller('NotificationsCtrl', function($scope, notifications){
   $scope.notifications = notifications;
 })
-.controller('SubscriptionsCtrl', function($scope, getSubscriptions){
-  getSubscriptions().toArray(function(subscriptions){
-    $scope.subscriptions = subscriptions;
-  });
-})
-.controller('NewSubscriptionVideos', function($scope, getSubscriptionVideos){
+.controller('NewSubscriptionVideos', function($scope, $interval, getAuth, getNewSubscriptionVideos){
+  var minute = 1000*60,
+      fetchTime = 5*minute;
+
   function updateSubscriptionVideos(){
-    getSubscriptionVideos().then(function(videos){
-      $scope.videos = videos;
+    $scope.nextFetchAt = new Date(Date.now() + fetchTime).toJSON();
+
+    getNewSubscriptionVideos().then(function(newVideos){
+      if (!$scope.videos) {
+        $scope.videos = newVideos;
+      } else if (newVideos.length > 0) {
+        Array.prototype.splice.apply($scope.videos, [$scope.videos.length, 0].concat(newVideos));
+      }
+    }, function(error){
+      return getAuth().then(function(){
+        return updateSubscriptionVideos();
+      });
     });
   }
 
   updateSubscriptionVideos();
-  var minute = 1000*60;
-  setInterval(updateSubscriptionVideos, 5*minute);
+  $interval(updateSubscriptionVideos, fetchTime);
 });

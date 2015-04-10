@@ -9,6 +9,7 @@
   var scopes=[],
       gapiDefer = Pgapi.defer(),
       authDefer = Pgapi.defer();
+  Pgapi.gapiPromise = gapiDefer.promise;
 
   Pgapi.authorize = function(options){
     if (!options) options = {};
@@ -62,7 +63,7 @@
         } else {
           deferredRequest.resolve(response);
         }
-      });
+      }, deferredRequest.reject);
       return deferredRequest.promise;
     });
   };
