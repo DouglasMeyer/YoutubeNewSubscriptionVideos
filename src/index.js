@@ -1,3 +1,5 @@
+if (!window.ga) window.ga = function(){};
+
 if (!Array.prototype.find){
   Array.prototype.find = function(fn){
     for (var pair of this){
