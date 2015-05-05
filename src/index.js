@@ -222,13 +222,18 @@ angular.module('YTNew', ['timeRelative'])
       getAuth();
     } catch (e){ console.error('setToken', e); }
   });
+
+  if (Notification.permission !== 'granted') {
+    Notification.requestPermission();
+  }
 })
 .controller('NotificationsCtrl', function($scope, notifications){
   $scope.notifications = notifications;
 })
 .controller('NewSubscriptionVideos', function($scope, $interval, getAuth, getNewSubscriptionVideos){
   var minute = 1000*60,
-      fetchTime = 5*minute;
+      fetchTime = 5*minute,
+      notifyNewVideos = [];
 
   function updateSubscriptionVideos(){
     $scope.nextFetchAt = new Date(Date.now() + fetchTime).toJSON();
@@ -238,6 +243,14 @@ angular.module('YTNew', ['timeRelative'])
         $scope.videos = newVideos;
       } else if (newVideos.length > 0) {
         Array.prototype.splice.apply($scope.videos, [$scope.videos.length, 0].concat(newVideos));
+        Array.prototype.splice.apply(notifyNewVideos, [notifyNewVideos.length, 0].concat(newVideos));
+        var notification = new Notification(notifyNewVideos.length+" new video"+(notifyNewVideos.length == 1 ? '' : 's'), {
+          tag: "new video notification",
+          body: "From "+notifyNewVideos.map(function(v){ return v.channelTitle; }).reduce(function(list, name){ if (list.indexOf(name) == -1){ list.push(name); } return list; }, []).join(', ')
+        });
+        notification.addEventListener('click', function(){
+          notifyNewVideos = [];
+        }, false);
       }
     }, function(error){
       return getAuth().then(function(){
