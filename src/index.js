@@ -111,6 +111,7 @@ angular.module('YTNew', ['timeRelative'])
   return function(){
     var deferredSubscriptionVideos = $q.defer(),
         channelStream;
+    ga('send', 'event', 'newSubscriptionVideos', 'get');
 
 
     function onError(errorResponse, push){

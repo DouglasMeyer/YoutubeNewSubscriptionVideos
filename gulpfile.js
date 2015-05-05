@@ -1,4 +1,5 @@
 var gulp = require('gulp');
+var ga = require('gulp-ga');
 var gutil = require('gulp-util');
 var noop = gutil.noop;
 var uglify = require('gulp-uglify');
@@ -62,6 +63,7 @@ gulp.task('markup', function(){
   return gulp.src(p)
     .pipe( C.dev ? watch(p)                         : noop() )
     .pipe( C.dev ? injectReload({ port: C.lrPort }) : noop() )
+    .pipe( C.dev ? noop()                           : ga({ url: 'ytsubvids.firebaseapp.com', uid: 'UA-62516895-1' }) )
     .pipe(         gulp.dest('dist')                         )
     .pipe( C.dev ? livereload()                     : noop() );
 });
