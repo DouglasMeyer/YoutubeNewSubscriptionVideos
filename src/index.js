@@ -112,6 +112,11 @@ angular.module('YTNew', ['timeRelative'])
     var deferredSubscriptionVideos = $q.defer(),
         channelStream;
 
+
+    function onError(errorResponse, push){
+      deferredSubscriptionVideos.reject(errorResponse);
+    }
+
     if (cachedChannels.expires <= Date.now()){
       channelStream = Models.Subscription.find({
         part: 'snippet', mine: true, order: 'unread'
@@ -133,7 +138,8 @@ angular.module('YTNew', ['timeRelative'])
           return s.resourceId.channelId === channel.id;
         });
         return channel;
-      });
+      })
+      .errors(onError);
       channelStream.observe().toArray(function(channels){
         cachedChannels.value = channels;
         cachedChannels.expires = Date.now() + 1000*60 * 60;
@@ -166,9 +172,7 @@ angular.module('YTNew', ['timeRelative'])
     })
     .parallel(100)
     .flatten()
-    .errors(function(errorResponse, push){
-      deferredSubscriptionVideos.reject(errorResponse);
-    })
+    .errors(onError)
     .toArray(deferredSubscriptionVideos.resolve);
 
     return deferredSubscriptionVideos.promise;
@@ -242,20 +246,18 @@ angular.module('YTNew', ['timeRelative'])
       if (!$scope.videos) {
         $scope.videos = newVideos;
       } else if (newVideos.length > 0) {
-        Array.prototype.splice.apply($scope.videos, [$scope.videos.length, 0].concat(newVideos));
+        Array.prototype.splice.apply($scope.videos, [0, 0].concat(newVideos));
         Array.prototype.splice.apply(notifyNewVideos, [notifyNewVideos.length, 0].concat(newVideos));
         var notification = new Notification(notifyNewVideos.length+" new video"+(notifyNewVideos.length == 1 ? '' : 's'), {
           tag: "new video notification",
-          body: "From "+notifyNewVideos.map(function(v){ return v.channelTitle; }).reduce(function(list, name){ if (list.indexOf(name) == -1){ list.push(name); } return list; }, []).join(', ')
+          body: "From "+notifyNewVideos.reverse().map(function(v){ return v.channelTitle; }).reduce(function(list, name){ if (list.indexOf(name) == -1){ list.push(name); } return list; }, []).join(', ')
         });
         notification.addEventListener('click', function(){
           notifyNewVideos = [];
         }, false);
       }
     }, function(error){
-      return getAuth().then(function(){
-        return updateSubscriptionVideos();
-      });
+      return getAuth().then(updateSubscriptionVideos);
     });
   }
 
