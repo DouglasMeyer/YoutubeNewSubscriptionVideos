@@ -22,34 +22,13 @@
         ng-click="notification.click()"
       >{{ notification.body }}</li>
     </ul>
-    <!--ul
-      ng-controller="SubscriptionsCtrl"
-      class="no-list subscriptions"
-    >
-      <li
-        ng-cloak
-        ng-repeat="subscription in subscriptions"
-        title="{{ subscription.description }}"
-      >
-        <img ng-src="{{ subscription.thumbnails.default.url }}" width="88" height="88" />
-        <div class="title">{{ subscription.title }}</div>
-      </li>
-    </ul-->
-    <ul class="playlist-list no-list">
-      <li
-        ng-cloak
-        ng-repeat="playlist in ['New Subscription Videos', 'Subscription Videos', 'Watch Later']"
-        ng-class="{ 'selected': playlist == 'New Subscription Videos' }"
-      >
-        {{ playlist }}
-      </li>
-    </ul>
     <div
-      class="selected-playlist"
       ng-controller="NewSubscriptionVideos"
     >
       <h2>New Subscription Videos</h2>
-      <time relative without-suffix datetime="{{nextFetchAt}}"></time>
+      <p>
+        Next refresh: <time relative without-suffix datetime="{{nextFetchAt}}"></time>
+      </p>
       <ul class="no-list">
         <li
           ng-cloak
