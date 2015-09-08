@@ -216,7 +216,7 @@ angular.module('YTNew', ['timeRelative'])
     return authPromise;
   }
 })
-.run(function($q, getAuth){
+.run(function($q){
   Pgapi.defer = $q.defer;
   Pgapi.clientId = '699114606672';
   Pgapi.apiKey = 'AIzaSyAxLW9JhtdCuwSNYctaI9VO9iapzU7Jibk';
@@ -226,7 +226,6 @@ angular.module('YTNew', ['timeRelative'])
     try {
       var token = localStorage.getItem('YTNew.access_token');
       gapi.auth.setToken({ access_token: token });
-      getAuth();
     } catch (e){ console.error('setToken', e); }
   });
 
@@ -245,7 +244,11 @@ angular.module('YTNew', ['timeRelative'])
   function updateSubscriptionVideos(){
     $scope.nextFetchAt = new Date(Date.now() + fetchTime).toJSON();
 
-    getNewSubscriptionVideos().then(function(newVideos){
+    getAuth()
+    .then(function(){
+      return getNewSubscriptionVideos();
+    })
+    .then(function(newVideos){
       if (!$scope.videos) {
         $scope.videos = newVideos;
       } else if (newVideos.length > 0) {

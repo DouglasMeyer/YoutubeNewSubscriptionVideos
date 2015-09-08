@@ -26,6 +26,11 @@ gulp.task('clean', function(cb){
   del(['dist/**'], cb);
 });
 
+gulp.task('copy', function(){
+  return gulp.src('src/favicon.ico')
+    .pipe(gulp.dest('dist'));
+});
+
 gulp.task('webserver', function(){
   var connect = require('connect');
   var serveStatic = require('serve-static');
@@ -73,7 +78,7 @@ gulp.task('karma', function(){
 });
 
 gulp.task('build', ['clean'], function(){
-  gulp.start(['markup', 'scripts', 'styles' /*, 'copy'*/]);
+  gulp.start(['markup', 'scripts', 'styles', 'copy']);
 });
 
 gulp.task('default', function(){
